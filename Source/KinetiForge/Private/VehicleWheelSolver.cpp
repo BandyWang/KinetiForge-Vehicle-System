@@ -383,7 +383,14 @@ void FVehicleWheelSolver::ApplySurface(
 	}
 
 	const int32 SurfaceIndex = SuspensionState.bHitGround ? SurfaceLookup->FindSurfaceIndex(ImpactPhysMaterial) : INDEX_NONE;
-	const FVehicleSurfaceProperties& Surface = SurfaceLookup->GetSurface(SurfaceIndex);
+	const FVehicleSurfaceProperties& BaseSurface = SurfaceLookup->GetSurface(SurfaceIndex);
+
+	// snow cover blends the road toward the snow surface
+	const float SnowCover = FMath::Clamp(SurfaceConditions.SnowCover, 0.f, 1.f);
+	const FVehicleSurfaceProperties Surface = SnowCover > 0.5f ?
+		FVehicleSurfaceLookup::Blend(SurfaceLookup->SnowSurface, BaseSurface, 1.f - SnowCover) :
+		FVehicleSurfaceLookup::Blend(BaseSurface, SurfaceLookup->SnowSurface, SnowCover);
+
 	const bool bIgnoreImpactFriction = SurfaceIndex != INDEX_NONE && SurfaceLookup->bIgnorePhysicalMaterialFriction;
 
 	// weather: wet surfaces lose grip, wet surfaces at or below freezing turn to ice

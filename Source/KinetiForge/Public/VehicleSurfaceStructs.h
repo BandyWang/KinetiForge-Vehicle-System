@@ -92,6 +92,13 @@ struct KINETIFORGE_API FVehicleSurfaceConditions
 	*/
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float RoadTemperature = 20.f;
+
+	/**
+	* 0 = no snow, 1 = road fully covered by snow.
+	* Blends whatever surface the wheel is on toward the surface data's SnowSurface.
+	*/
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float SnowCover = 0.f;
 };
 
 /**
@@ -124,11 +131,28 @@ struct KINETIFORGE_API FVehicleSurfaceEntry
 */
 struct KINETIFORGE_API FVehicleSurfaceLookup
 {
+	/** Field-by-field blend of two surfaces (name and index are taken from A) */
+	static FVehicleSurfaceProperties Blend(const FVehicleSurfaceProperties& A, const FVehicleSurfaceProperties& B, const float Alpha)
+	{
+		FVehicleSurfaceProperties Out = A;
+		Out.GripScale = FMath::Lerp(A.GripScale, B.GripScale, Alpha);
+		Out.LongitudinalGripScale = FMath::Lerp(A.LongitudinalGripScale, B.LongitudinalGripScale, Alpha);
+		Out.LateralGripScale = FMath::Lerp(A.LateralGripScale, B.LateralGripScale, Alpha);
+		Out.RollingResistanceCoefficient = FMath::Lerp(A.RollingResistanceCoefficient, B.RollingResistanceCoefficient, Alpha);
+		Out.RelaxationLengthScale = FMath::Lerp(A.RelaxationLengthScale, B.RelaxationLengthScale, Alpha);
+		Out.WetGripScale = FMath::Lerp(A.WetGripScale, B.WetGripScale, Alpha);
+		Out.WetRollingResistanceScale = FMath::Lerp(A.WetRollingResistanceScale, B.WetRollingResistanceScale, Alpha);
+		Out.IceGripScale = FMath::Lerp(A.IceGripScale, B.IceGripScale, Alpha);
+		return Out;
+	}
+
 	static constexpr int32 NumSurfaceTypes = (int32)SurfaceType_Max;
 
 	bool bIgnorePhysicalMaterialFriction = true;
 
 	FVehicleSurfaceProperties DefaultSurface;
+
+	FVehicleSurfaceProperties SnowSurface;
 
 	TArray<FVehicleSurfaceProperties> Surfaces;
 

@@ -23,6 +23,13 @@ UVehicleSurfaceDataAsset::UVehicleSurfaceDataAsset()
 	FVehicleSurfaceEntry Dirt;
 	Dirt.Properties = MakeDirt();
 	Surfaces.Add(Dirt);
+
+	// for materials that are always snowy (ski areas, high Sierra roads in winter)
+	FVehicleSurfaceEntry Snow;
+	Snow.Properties = MakeSnow();
+	Surfaces.Add(Snow);
+
+	SnowSurface = MakeSnow();
 }
 
 TSharedRef<const FVehicleSurfaceLookup, ESPMode::ThreadSafe> UVehicleSurfaceDataAsset::BuildLookup(const TMap<FName, float>* TireGripMultipliers) const
@@ -43,7 +50,10 @@ TSharedRef<const FVehicleSurfaceLookup, ESPMode::ThreadSafe> UVehicleSurfaceData
 		}
 	};
 
+	Lookup->SnowSurface = SnowSurface;
+
 	ApplyTireMultiplier(Lookup->DefaultSurface);
+	ApplyTireMultiplier(Lookup->SnowSurface);
 
 	for (const FVehicleSurfaceEntry& Entry : Surfaces)
 	{
@@ -144,5 +154,22 @@ FVehicleSurfaceProperties UVehicleSurfaceDataAsset::MakeDirt()
 	Props.WetGripScale = 0.6f;
 	Props.WetRollingResistanceScale = 1.6f;
 	Props.IceGripScale = 0.25f;
+	return Props;
+}
+
+FVehicleSurfaceProperties UVehicleSurfaceDataAsset::MakeSnow()
+{
+	FVehicleSurfaceProperties Props;
+	Props.SurfaceName = TEXT("Snow");
+	// packed snow, mu ~0.2-0.35 for an all-season tire; fresh deep snow has much higher rolling resistance
+	Props.GripScale = 0.3f;
+	Props.LongitudinalGripScale = 1.f;
+	Props.LateralGripScale = 1.f;
+	Props.RollingResistanceCoefficient = 0.05f;
+	Props.RelaxationLengthScale = 1.8f;
+	// wet snow above freezing is slush; wet snow at or below freezing is glazed and icy
+	Props.WetGripScale = 0.8f;
+	Props.WetRollingResistanceScale = 1.5f;
+	Props.IceGripScale = 0.5f;
 	return Props;
 }

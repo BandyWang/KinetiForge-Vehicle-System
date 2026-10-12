@@ -10,7 +10,7 @@
 /**
 * Data-driven road surface table.
 * Maps physical materials (or physical surface types) to grip and rolling resistance.
-* A new asset comes pre-filled with Dry Asphalt, Wet Asphalt, Gravel and Dirt;
+* A new asset comes pre-filled with Dry Asphalt, Wet Asphalt, Gravel, Dirt and Snow;
 * assign your landscape / road physical materials to each entry.
 */
 UCLASS(BlueprintType)
@@ -26,6 +26,13 @@ public:
 	*/
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Surface")
 	FVehicleSurfaceProperties DefaultSurface;
+
+	/**
+	* What any surface turns into as the weather's SnowCover goes to 1.
+	* Tires can tune it through SurfaceGripMultipliers with this SurfaceName (e.g. winter tires: Snow = 1.5).
+	*/
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Surface")
+	FVehicleSurfaceProperties SnowSurface;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Surface")
 	TArray<FVehicleSurfaceEntry> Surfaces;
@@ -52,4 +59,5 @@ public:
 	static FVehicleSurfaceProperties MakeWetAsphalt();
 	static FVehicleSurfaceProperties MakeGravel();
 	static FVehicleSurfaceProperties MakeDirt();
+	static FVehicleSurfaceProperties MakeSnow();
 };
