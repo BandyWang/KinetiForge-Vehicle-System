@@ -269,6 +269,11 @@ void UVehicleWheelComponent::ApplyWheelForce(Chaos::FRigidBodyHandle_Internal* c
 
 	// apply force to Chassis
 	FVector AngularImpulse = FVector::CrossProduct(LeverArmVec, Impulse);
+	if (TireConfig.bApplyAligningTorqueToChassis)
+	{
+		// N*m * s to UE units (kg*cm^2/s)
+		AngularImpulse += (FVector)Wheel.State.AligningTorqueVector * Wheel.CurrentContext.MacroDeltaTime * 10000.;
+	}
 	ChassisHandle->SetLinearImpulse(ChassisHandle->LinearImpulse() + Impulse, false);
 	ChassisHandle->SetAngularImpulse(ChassisHandle->AngularImpulse() + AngularImpulse, false);
 
@@ -433,6 +438,8 @@ void UVehicleWheelComponent::SubStepWheel(
 void UVehicleWheelComponent::PostStepApplyForce()
 {
 	Wheel.PostStep();
+	Wheel.UpdateThermals(TireConfig, BrakeThermalConfig, SurfaceConditions, Suspension.State);
+	Wheel.UpdateAligningTorque(TireConfig, Suspension.State, ChassisAsyncWorldTransform);
 
 	Chaos::FRigidBodyHandle_Internal* const ChassisHandle = UVehicleUtilities::GetInternalHandle(Chassis.Get());
 	ApplyWheelForce(ChassisHandle);
@@ -482,6 +489,7 @@ void UVehicleWheelComponent::CopyWheelConfig(const UVehicleWheelComponent* Sourc
 	Target->WheelConfig = Source->WheelConfig;
 	Target->TireConfig = Source->TireConfig;
 	Target->ABSConfig = Source->ABSConfig;
+	Target->BrakeThermalConfig = Source->BrakeThermalConfig;
 	Target->SurfaceData = Source->SurfaceData;
 	Target->SurfaceConditions = Source->SurfaceConditions;
 	Target->SuspensionKinematicsConfig = Source->SuspensionKinematicsConfig;

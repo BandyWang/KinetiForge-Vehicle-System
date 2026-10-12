@@ -62,6 +62,12 @@ protected:
 	FVehicleABSConfig ABSConfig;
 
 	/**
+	* Disc temperature and brake fade.
+	*/
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Setup")
+	FVehicleBrakeThermalConfig BrakeThermalConfig;
+
+	/**
 	* Road surface table (grip, rolling resistance per physical material).
 	* If empty, the tire uses the physical material's Friction only (legacy behavior).
 	*/
@@ -221,6 +227,34 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleWheel")
 	void SetABSConfig(const FVehicleABSConfig& NewConfig);
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleWheel")
+	const FVehicleBrakeThermalConfig& GetBrakeThermalConfig() { return BrakeThermalConfig; }
+
+	UFUNCTION(BlueprintCallable, Category = "VehicleWheel")
+	void SetBrakeThermalConfig(const FVehicleBrakeThermalConfig& NewConfig) { BrakeThermalConfig = NewConfig; }
+
+	/**
+	* Sets tire temperatures in C (e.g. tire blankets, or a car that has been parked in the sun).
+	* Below -273 = reset to the air temperature.
+	*/
+	UFUNCTION(BlueprintCallable, Category = "VehicleWheel")
+	void SetTireTemperature(float SurfaceTemperature, float CoreTemperature) { Wheel.ResetTireTemperature(SurfaceTemperature, CoreTemperature); }
+
+	/** Fits fresh tires (1) or sets a part-worn tread (0-1), and repairs a blowout. */
+	UFUNCTION(BlueprintCallable, Category = "VehicleWheel")
+	void SetTireTread(float TreadRemaining = 1.f) { Wheel.ResetTireWear(TreadRemaining); }
+
+	/** Sets the brake disc temperature in C. Below -273 = reset to the air temperature. */
+	UFUNCTION(BlueprintCallable, Category = "VehicleWheel")
+	void SetBrakeTemperature(float Temperature) { Wheel.ResetBrakeTemperature(Temperature); }
+
+	/**
+	* Unit: N*m. Torque about this wheel's steering axis from the tire (trail, scrub, weight jacking).
+	* Sum the steered wheels (or use the axle's GetSteeringRackTorque) to drive force feedback.
+	*/
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleWheel")
+	float GetSteeringAxisTorque() { return Wheel.State.SteeringAxisTorque; }
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleWheel")
 	UVehicleSurfaceDataAsset* GetSurfaceData() { return SurfaceData; }

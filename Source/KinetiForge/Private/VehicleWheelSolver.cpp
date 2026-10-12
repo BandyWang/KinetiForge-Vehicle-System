@@ -5,6 +5,7 @@
 #include "VehicleWheelComponent.h"
 #include "AsyncTickFunctions.h"
 #include "VehicleUtilities.h"
+#include "VehicleThermalModel.h"
 
 FVehicleWheelSolver::FVehicleWheelSolver()
 {
@@ -60,6 +61,17 @@ void FVehicleWheelSolver::PreStep(
 	// friction multiplier, grip scales and rolling resistance of the road surface
 	ApplySurface(LocalState, Context, SuspensionState, TireConfig, SurfaceLookup, ImpactPhysMaterial, SurfaceConditions);
 
+	// tire temperature and pressure (computed at the end of the last step)
+	if (TireConfig.Thermal.bEnableThermalModel)
+	{
+		LocalState.DynFrictionMultiplier *= LocalState.TireThermalGripScale;
+	}
+	// tread wear and blowout (computed at the end of the last step)
+	if (TireConfig.Wear.bEnableWear)
+	{
+		LocalState.DynFrictionMultiplier *= LocalState.TireWearGripScale;
+	}
+
 	Context.GravityComp2D = CalculateGravityCompensationOnSlope(
 		LocalState, Context,
 		LocalState.WheelLoad,
@@ -87,6 +99,8 @@ void FVehicleWheelSolver::PreStep(
 
 	// clear tire force
 	Context.AccumulateTireImpulse2D = FVector2f(0.f);
+	Context.AccumulatedSlipEnergy = 0.f;
+	Context.AccumulatedBrakeEnergy = 0.f;
 }
 
 void FVehicleWheelSolver::Substep(
@@ -112,7 +126,8 @@ void FVehicleWheelSolver::Substep(
 	LocalState.EffectiveInertia = Config.Inertia + InReflectedInertia;
 	LocalState.DriveTorque = InDriveTorque + LocalState.P4MotorTorque;
 
-	float TargetBrakeTorque = FMath::Max(0.f, FMath::Abs(InBrakeTorque) + LocalState.BrakeTorqueFromESP);
+	// brake fade: BrakeFrictionScale stays 1 when the brake thermal model is off
+	float TargetBrakeTorque = FMath::Max(0.f, FMath::Abs(InBrakeTorque) + LocalState.BrakeTorqueFromESP) * LocalState.BrakeFrictionScale;
 	PredictSlipAndUpdateABS(LocalState, Context, ABSConfig, TargetBrakeTorque, SuspensionState.bWheelOnGround);
 
 	LocalState.BrakeTorqueFromHandbrake = FMath::Abs(InHandbrakeTorque);
@@ -140,6 +155,15 @@ void FVehicleWheelSolver::Substep(
 	WheelAcceleration(LocalState, Context, SubstepForce2D.X, SuspensionState.bWheelOnGround, SlipVelocityTolerance);
 
 	Context.AccumulateTireImpulse2D += SubstepForce2D * Context.SubstepDeltaTime;
+
+	// friction work at the contact patch heats the tread
+	const float SlipPower =
+		FMath::Abs(SubstepForce2D.X * LocalState.LongSlipVelocity) +
+		FMath::Abs(SubstepForce2D.Y * LocalState.LatSlipVelocity);
+	Context.AccumulatedSlipEnergy += SlipPower * Context.SubstepDeltaTime;
+
+	// brake work heats the disc; a locked wheel does no work on the disc
+	Context.AccumulatedBrakeEnergy += LocalState.BrakeTorqueFromBrake * FMath::Abs(LocalState.AngularVelocity) * Context.SubstepDeltaTime;
 }
 
 void FVehicleWheelSolver::PostStep()
@@ -152,6 +176,233 @@ void FVehicleWheelSolver::PostStep()
 	LocalState.TireForce =
 		LocalState.TireForce2D.X * Context.LongForceDir +
 		LocalState.TireForce2D.Y * Context.LatForceDir;
+}
+
+void FVehicleWheelSolver::UpdateThermals(
+	const FVehicleTireConfig& TireConfig,
+	const FVehicleBrakeThermalConfig& BrakeThermalConfig,
+	const FVehicleSurfaceConditions& SurfaceConditions,
+	const FVehicleSuspensionSimState& SuspensionState)
+{
+	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForgeVehicle_Wheel_WheelSolver_UpdateThermals);
+
+	using namespace VehicleThermalModel;
+
+	FVehicleWheelSimContext& Context = CurrentContext;
+	FVehicleWheelSimState& LocalState = State;
+
+	const float Dt = Context.MacroDeltaTime;
+	const float AirTemperature = SurfaceConditions.AirTemperature;
+	const float Speed = LocalState.LocalLinearVelocity.Size();
+	const bool bOnGround = SuspensionState.bWheelOnGround;
+
+	const FVehicleTireWearConfig& Wear = TireConfig.Wear;
+	const float Wetness = FMath::Clamp(SurfaceConditions.Wetness, 0.f, 1.f);
+	// tread burnt off by heat above MaxTreadTemperature this step (fraction of a full tread)
+	float BurnOffWear = 0.f;
+
+	// ---------------- tire ----------------
+	const FVehicleTireThermalConfig& Tire = TireConfig.Thermal;
+	if (Tire.bEnableThermalModel)
+	{
+		if (!LocalState.bTireThermalInitialized)
+		{
+			const float T0 = Tire.InitialTemperature < -KelvinOffset ? AirTemperature : Tire.InitialTemperature;
+			LocalState.TireSurfaceTemperature = T0;
+			LocalState.TireCoreTemperature = T0;
+			LocalState.bTireThermalInitialized = true;
+		}
+
+		const float MacroDtInv = Context.MacroDeltaTimeInv;
+		const float SlipHeat = Context.AccumulatedSlipEnergy * MacroDtInv * Tire.SlipHeatFraction;
+		const float RollSpeed = FMath::Abs(LocalState.AngularVelocity * Context.R);
+		const float HysteresisHeat = bOnGround ? Tire.HysteresisHeatCoefficient * LocalState.WheelLoad * RollSpeed : 0.f;
+
+		const float AirG = Tire.AirCoolingBase + Tire.AirCoolingPerSpeed * Speed;
+		const float RoadG = bOnGround ? Tire.RoadConductance * (1.f + Tire.WetCoolingFactor * Wetness) : 0.f;
+
+		const float OldSurface = LocalState.TireSurfaceTemperature;
+		LocalState.TireSurfaceTemperature = StepNode(
+			OldSurface, Tire.SurfaceHeatCapacity, SlipHeat, Dt,
+			Tire.SurfaceToCoreConductance, LocalState.TireCoreTemperature,
+			AirG, AirTemperature,
+			RoadG, SurfaceConditions.RoadTemperature);
+
+		// past MaxTreadTemperature the rubber burns off (smoke) instead of getting hotter
+		if (Wear.bEnableWear && LocalState.TireSurfaceTemperature > Wear.MaxTreadTemperature)
+		{
+			const float ExcessEnergyMJ = (LocalState.TireSurfaceTemperature - Wear.MaxTreadTemperature) * Tire.SurfaceHeatCapacity * 1e-6f;
+			BurnOffWear = ExcessEnergyMJ / FMath::Max(Wear.BurnOffMegajoules, 0.001f);
+			LocalState.TireSurfaceTemperature = Wear.MaxTreadTemperature;
+		}
+
+		LocalState.TireCoreTemperature = StepNode(
+			LocalState.TireCoreTemperature, Tire.CoreHeatCapacity, HysteresisHeat, Dt,
+			Tire.SurfaceToCoreConductance, LocalState.TireSurfaceTemperature,
+			AirG * Tire.CoreAirCoolingScale, AirTemperature);
+
+		LocalState.TirePressure = GaugePressure(Tire.ColdPressure, Tire.ColdPressureTemperature, LocalState.TireCoreTemperature);
+
+		const float GripTemperature = FMath::Lerp(
+			LocalState.TireCoreTemperature, LocalState.TireSurfaceTemperature, Tire.SurfaceTemperatureGripWeight);
+		const float TempScale = TemperatureWindowScale(
+			GripTemperature, Tire.OptimalTemperature, Tire.ColdWindow, Tire.HotWindow, Tire.MinGripScale);
+		const float PressScale = PressureScale(
+			LocalState.TirePressure, Tire.OptimalPressure, Tire.PressureGripSensitivity, Tire.MinGripScale);
+		LocalState.TireThermalGripScale = FMath::Max(TempScale * PressScale, FMath::Clamp(Tire.MinGripScale, 0.f, 1.f));
+	}
+	else
+	{
+		LocalState.bTireThermalInitialized = false;
+		LocalState.TireThermalGripScale = 1.f;
+	}
+
+	// ---------------- tread wear ----------------
+	if (Wear.bEnableWear)
+	{
+		const float OverheatScale = Tire.bEnableThermalModel ?
+			OverheatWearScale(LocalState.TireSurfaceTemperature, Wear.OverheatTemperature, Wear.OverheatWindow, Wear.OverheatWearMultiplier) : 1.f;
+		const float SlipEnergyMJ = Context.AccumulatedSlipEnergy * 1e-6f;
+		LocalState.TreadRemaining = FMath::Max(
+			LocalState.TreadRemaining - SlipEnergyMJ * Wear.WearPerMegajoule * OverheatScale - BurnOffWear, 0.f);
+
+		const bool bOverPressure = Tire.bEnableThermalModel && Wear.BlowoutPressure > 0.f && LocalState.TirePressure > Wear.BlowoutPressure;
+		if (LocalState.TreadRemaining <= 0.f || bOverPressure)
+		{
+			LocalState.bTireBlown = true;
+		}
+		if (LocalState.bTireBlown)
+		{
+			LocalState.TirePressure = 0.f;
+		}
+
+		LocalState.TireWearGripScale =
+			TreadGripScale(LocalState.TreadRemaining, Wear.WornGripScale, Wetness, Wear.WetWornGripLoss) *
+			(LocalState.bTireBlown ? FMath::Clamp(Wear.BlownGripScale, 0.f, 1.f) : 1.f);
+	}
+	else
+	{
+		LocalState.TireWearGripScale = 1.f;
+	}
+
+	// ---------------- brake ----------------
+	const FVehicleBrakeThermalConfig& Brake = BrakeThermalConfig;
+	if (Brake.bEnableThermalModel)
+	{
+		if (!LocalState.bBrakeThermalInitialized)
+		{
+			LocalState.BrakeTemperature = Brake.InitialTemperature < -KelvinOffset ? AirTemperature : Brake.InitialTemperature;
+			LocalState.bBrakeThermalInitialized = true;
+		}
+
+		const float BrakeHeat = Context.AccumulatedBrakeEnergy * Context.MacroDeltaTimeInv;
+		// the disc spins with the wheel, so its cooling follows wheel speed rather than car speed
+		const float DiscSpeed = FMath::Max(Speed, FMath::Abs(LocalState.AngularVelocity * Context.R));
+		const float CoolingG = Brake.CoolingBase + Brake.CoolingPerSpeed * DiscSpeed;
+
+		LocalState.BrakeTemperature = StepNode(
+			LocalState.BrakeTemperature, Brake.HeatCapacity, BrakeHeat, Dt,
+			CoolingG, AirTemperature);
+
+		LocalState.BrakeFrictionScale = BrakeFrictionScale(
+			LocalState.BrakeTemperature, AirTemperature, Brake.ColdFrictionScale, Brake.OptimalMinTemperature,
+			Brake.FadeStartTemperature, Brake.FadeEndTemperature, Brake.FadedFrictionScale);
+	}
+	else
+	{
+		LocalState.bBrakeThermalInitialized = false;
+		LocalState.BrakeFrictionScale = 1.f;
+	}
+}
+
+void FVehicleWheelSolver::UpdateAligningTorque(
+	const FVehicleTireConfig& TireConfig,
+	const FVehicleSuspensionSimState& SuspensionState,
+	const FTransform& AsyncChassisWorldTransform)
+{
+	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForgeVehicle_Wheel_WheelSolver_UpdateAligningTorque);
+
+	FVehicleWheelSimContext& Context = CurrentContext;
+	FVehicleWheelSimState& LocalState = State;
+
+	if (!SuspensionState.bWheelOnGround)
+	{
+		LocalState.PneumaticTrail = 0.f;
+		LocalState.AligningTorque = 0.f;
+		LocalState.AligningTorqueVector = FVector3f(0.f);
+		LocalState.SteeringAxisTorque = 0.f;
+		return;
+	}
+
+	// how far the contact patch is into sliding: 0 = sticking, 1 = at the grip peak (brush model)
+	const float PeakSlipAngle = CachedLUTs.Fy.bHasValidStiffness ?
+		FMath::Max(90.f * CachedLUTs.Fy.OptimalSlipIndex / 63.f, 0.1f) : TireConfig.FallbackPeakSlipAngle;
+	const float PeakSlipRatio = CachedLUTs.Fx.bHasValidStiffness ?
+		FMath::Max(CachedLUTs.Fx.OptimalSlipIndex / 63.f, 0.01f) : 0.1f;
+
+	const float TransientSlipAngle = FMath::RadiansToDegrees(FMath::Atan(FMath::Abs(LocalState.TransientSlip.Y)));
+	const float LambdaLat = TransientSlipAngle / PeakSlipAngle;
+	const float LambdaLong = FMath::Abs(LocalState.TransientSlip.X) / PeakSlipRatio;
+	const float Lambda = FMath::Sqrt(LambdaLat * LambdaLat + LambdaLong * LambdaLong);
+
+	// contact patch length grows with the square root of load
+	const float NominalLoad = FMath::Max(SuspensionState.StaticSprungMass * 9.81f, 1.f);
+	const float LoadRatio = FMath::Clamp(LocalState.WheelLoad / NominalLoad, 0.f, 4.f);
+
+	LocalState.PneumaticTrail = TireConfig.PneumaticTrail * FMath::Sqrt(LoadRatio) * VehicleThermalModel::PneumaticTrailRatio(Lambda);
+
+	// lateral force acts PneumaticTrail behind the contact patch center
+	const FVector3f TrailOffset = -Context.LongForceDir * (LocalState.PneumaticTrail * 0.01f);	// m
+	const FVector3f LatForce = Context.LatForceDir * LocalState.TireForce2D.Y;
+	const FVector3f ImpactNormal = SuspensionState.ImpactWorldNormal;
+	LocalState.AligningTorqueVector = FVector3f::CrossProduct(TrailOffset, LatForce);
+	LocalState.AligningTorque = FVector3f::DotProduct(LocalState.AligningTorqueVector, ImpactNormal);
+
+	// torque about the steering axis: all contact forces acting about the kingpin
+	const FVector3f SteerAxisWorld = FVector3f(AsyncChassisWorldTransform.TransformVectorNoScale(
+		FVector(SuspensionState.SteerAxisChassisDirection))).GetSafeNormal();
+	if (SteerAxisWorld.IsNearlyZero())
+	{
+		LocalState.SteeringAxisTorque = 0.f;
+		return;
+	}
+	const FVector KingpinPointWorld = AsyncChassisWorldTransform.TransformPositionNoScale(
+		FVector(SuspensionState.LowerBallJointChassisLocation));
+	const FVector3f Arm = FVector3f(SuspensionState.ImpactWorldLocation - KingpinPointWorld) * 0.01f;	// m
+	const FVector3f ContactForce = LocalState.TireForce + ImpactNormal * FMath::Max(0.f, SuspensionState.ForceAlongImpactNormal);
+	const FVector3f TotalTorque = FVector3f::CrossProduct(Arm, ContactForce) + LocalState.AligningTorqueVector;
+	LocalState.SteeringAxisTorque = FVector3f::DotProduct(TotalTorque, SteerAxisWorld);
+}
+
+void FVehicleWheelSolver::ResetTireTemperature(float SurfaceTemperature, float CoreTemperature)
+{
+	// uninitialized temperatures are set to the air temperature on the next update
+	if (SurfaceTemperature < -VehicleThermalModel::KelvinOffset || CoreTemperature < -VehicleThermalModel::KelvinOffset)
+	{
+		State.bTireThermalInitialized = false;
+		return;
+	}
+	State.TireSurfaceTemperature = SurfaceTemperature;
+	State.TireCoreTemperature = CoreTemperature;
+	State.bTireThermalInitialized = true;
+}
+
+void FVehicleWheelSolver::ResetTireWear(float TreadRemaining)
+{
+	State.TreadRemaining = FMath::Clamp(TreadRemaining, 0.f, 1.f);
+	State.bTireBlown = false;
+	State.TireWearGripScale = 1.f;
+}
+
+void FVehicleWheelSolver::ResetBrakeTemperature(float Temperature)
+{
+	if (Temperature < -VehicleThermalModel::KelvinOffset)
+	{
+		State.bBrakeThermalInitialized = false;
+		return;
+	}
+	State.BrakeTemperature = Temperature;
+	State.bBrakeThermalInitialized = true;
 }
 
 void FVehicleWheelSolver::DrawWheelForce(
@@ -362,8 +613,9 @@ void FVehicleWheelSolver::ApplySurface(
 	const FVehicleSurfaceConditions& SurfaceConditions)
 {
 	// tire grip vs road temperature, a property of the tire (works with or without surface data)
+	// the tire thermal model replaces this: road temperature then reaches grip through the tire temperature
 	const float TemperatureDelta = FMath::Abs(SurfaceConditions.RoadTemperature - TireConfig.OptimalRoadTemperature);
-	const float TemperatureGripScale = FMath::Clamp(
+	const float TemperatureGripScale = TireConfig.Thermal.bEnableThermalModel ? 1.f : FMath::Clamp(
 		1.f - TireConfig.RoadTemperatureGripFalloff * TemperatureDelta,
 		FMath::Min(TireConfig.MinTemperatureGripScale, 1.f),
 		1.f);
