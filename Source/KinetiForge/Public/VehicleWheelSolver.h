@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "VehicleWheelStructs.h"
 #include "VehicleSuspensionStructs.h"
+#include "VehicleSurfaceStructs.h"
 
 class UVehicleWheelComponent;
 class UCurveFloat;
@@ -25,7 +26,9 @@ public:
 		const FTransform& AsyncChassisWorldTransform,
 		const FVehicleSuspensionSimState& SuspensionState,
 		const FVehicleWheelConfig& WheelConfig,
-		const FVehicleTireConfig& TireConfig
+		const FVehicleTireConfig& TireConfig,
+		const FVehicleSurfaceLookup* SurfaceLookup = nullptr,
+		const UPhysicalMaterial* ImpactPhysMaterial = nullptr
 	);
 
 	void Substep(
@@ -75,7 +78,15 @@ private:
 		FVehicleWheelSimState& LocalState,
 		const FVehicleWheelSimContext& Context,
 		const FVehicleTireConfig& TireConfig,
-		const float ImpactFriction);
+		const float ImpactFriction,
+		const bool bIgnoreImpactFriction = false);
+	static void ApplySurface(
+		FVehicleWheelSimState& LocalState,
+		FVehicleWheelSimContext& Context,
+		const FVehicleSuspensionSimState& SuspensionState,
+		const FVehicleTireConfig& TireConfig,
+		const FVehicleSurfaceLookup* SurfaceLookup,
+		const UPhysicalMaterial* ImpactPhysMaterial);
 	static void UpdateLinearVelocity(
 		FVehicleWheelSimState& LocalState,
 		const FVector3f& LongForceDir,

@@ -10,6 +10,7 @@
 #include "VehicleWheelComponent.generated.h"	//generated.h must be the last
 
 class UVehicleWheelCoordinatorComponent;
+class UVehicleSurfaceDataAsset;
 
 /**
 * The WheelComponent is a raycast wheel with simple suspension kinematics.
@@ -59,6 +60,13 @@ protected:
 	FVehicleTireConfig TireConfig;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Setup")
 	FVehicleABSConfig ABSConfig;
+
+	/**
+	* Road surface table (grip, rolling resistance per physical material).
+	* If empty, the tire uses the physical material's Friction only (legacy behavior).
+	*/
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Setup")
+	TObjectPtr<UVehicleSurfaceDataAsset> SurfaceData = nullptr;
 
 	/*
 	* For Suspension
@@ -113,6 +121,11 @@ protected:
 	FVehicleSuspensionSolver Suspension;
 	//wheel movement
 	FVehicleWheelSolver Wheel;
+
+	// immutable surface table read by the physics thread; swapped as a whole under SurfaceLookupLock
+	TSharedPtr<const FVehicleSurfaceLookup, ESPMode::ThreadSafe> SurfaceLookup;
+	mutable FCriticalSection SurfaceLookupLock;
+	void RebuildSurfaceLookup();
 
 	FTransform ChassisAsyncWorldTransform;
 	FTransform3f DesignedHubLocalTransform;
@@ -202,6 +215,13 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleWheel")
 	void SetABSConfig(const FVehicleABSConfig& NewConfig);
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleWheel")
+	UVehicleSurfaceDataAsset* GetSurfaceData() { return SurfaceData; }
+
+	/** Safe to call while the vehicle is simulating */
+	UFUNCTION(BlueprintCallable, Category = "VehicleWheel")
+	void SetSurfaceData(UVehicleSurfaceDataAsset* NewSurfaceData);
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleWheel")
 	const FVehicleSuspensionKinematicsConfig& GetSuspensionKinematicsConfig() { return SuspensionKinematicsConfig; }

@@ -24,7 +24,9 @@ void FVehicleWheelSolver::PreStep(
 	const FTransform& AsyncChassisWorldTransform,
 	const FVehicleSuspensionSimState& SuspensionState, 
 	const FVehicleWheelConfig& WheelConfig,
-	const FVehicleTireConfig& TireConfig)
+	const FVehicleTireConfig& TireConfig,
+	const FVehicleSurfaceLookup* SurfaceLookup,
+	const UPhysicalMaterial* ImpactPhysMaterial)
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForgeVehicle_Wheel_WheelSolver_UpdateWheel);
 
@@ -52,9 +54,10 @@ void FVehicleWheelSolver::PreStep(
 
 	UpdateLinearVelocity(LocalState, Context.LongForceDir, Context.LatForceDir, SuspensionState.ImpactWorldVelocity);
 
-	UpdateDynamicFrictionMultiplier(LocalState, Context, TireConfig, SuspensionState.ImpactFriction);
-
 	LocalState.WheelLoad = FMath::Max(0.f, SuspensionState.ForceAlongImpactNormal);
+
+	// friction multiplier, grip scales and rolling resistance of the road surface
+	ApplySurface(LocalState, Context, SuspensionState, TireConfig, SurfaceLookup, ImpactPhysMaterial);
 
 	Context.GravityComp2D = CalculateGravityCompensationOnSlope(
 		LocalState, Context,
@@ -112,7 +115,7 @@ void FVehicleWheelSolver::Substep(
 	PredictSlipAndUpdateABS(LocalState, Context, ABSConfig, TargetBrakeTorque, SuspensionState.bWheelOnGround);
 
 	LocalState.BrakeTorqueFromHandbrake = FMath::Abs(InHandbrakeTorque);
-	LocalState.BrakeTorque = LocalState.BrakeTorqueFromBrake + Config.RollingRisistance + LocalState.BrakeTorqueFromHandbrake;
+	LocalState.BrakeTorque = LocalState.BrakeTorqueFromBrake + Config.RollingRisistance + LocalState.SurfaceRollingResistanceTorque + LocalState.BrakeTorqueFromHandbrake;
 
 	// =========================================================
 	// 1. Get tire force (using wheel speed from last frame)
@@ -316,8 +319,15 @@ void FVehicleWheelSolver::UpdateDynamicFrictionMultiplier(
 	FVehicleWheelSimState& LocalState,
 	const FVehicleWheelSimContext& Context,
 	const FVehicleTireConfig& TireConfig,
-	const float ImpactFriction)
+	const float ImpactFriction,
+	const bool bIgnoreImpactFriction)
 {
+	if (bIgnoreImpactFriction)
+	{
+		LocalState.DynFrictionMultiplier = TireConfig.FrictionMultiplier;
+		return;
+	}
+
 	switch (TireConfig.TireFrictionCombineMode)
 	{
 	case ETireFrictionCombineMode::Constant:
@@ -339,6 +349,46 @@ void FVehicleWheelSolver::UpdateDynamicFrictionMultiplier(
 		LocalState.DynFrictionMultiplier = 0.5 * (TireConfig.FrictionMultiplier + ImpactFriction);
 		break;
 	}
+}
+
+void FVehicleWheelSolver::ApplySurface(
+	FVehicleWheelSimState& LocalState,
+	FVehicleWheelSimContext& Context,
+	const FVehicleSuspensionSimState& SuspensionState,
+	const FVehicleTireConfig& TireConfig,
+	const FVehicleSurfaceLookup* SurfaceLookup,
+	const UPhysicalMaterial* ImpactPhysMaterial)
+{
+	if (!SurfaceLookup)
+	{
+		// no surface data: legacy behavior
+		UpdateDynamicFrictionMultiplier(LocalState, Context, TireConfig, SuspensionState.ImpactFriction);
+		LocalState.SurfaceIndex = INDEX_NONE;
+		LocalState.SurfaceName = NAME_None;
+		LocalState.SurfaceRollingResistanceTorque = 0.f;
+		Context.SurfaceLongGripScale = 1.f;
+		Context.SurfaceLatGripScale = 1.f;
+		Context.SurfaceRelaxationLengthScale = 1.f;
+		return;
+	}
+
+	const int32 SurfaceIndex = SuspensionState.bHitGround ? SurfaceLookup->FindSurfaceIndex(ImpactPhysMaterial) : INDEX_NONE;
+	const FVehicleSurfaceProperties& Surface = SurfaceLookup->GetSurface(SurfaceIndex);
+	const bool bIgnoreImpactFriction = SurfaceIndex != INDEX_NONE && SurfaceLookup->bIgnorePhysicalMaterialFriction;
+
+	UpdateDynamicFrictionMultiplier(LocalState, Context, TireConfig, SuspensionState.ImpactFriction, bIgnoreImpactFriction);
+	LocalState.DynFrictionMultiplier *= Surface.GripScale;
+
+	LocalState.SurfaceIndex = SurfaceIndex;
+	LocalState.SurfaceName = Surface.SurfaceName;
+
+	Context.SurfaceLongGripScale = Surface.LongitudinalGripScale;
+	Context.SurfaceLatGripScale = Surface.LateralGripScale;
+	Context.SurfaceRelaxationLengthScale = FMath::Max(Surface.RelaxationLengthScale, 0.01f);
+
+	// rolling resistance torque = Crr * Fz * R (Fz in N, R in m)
+	LocalState.SurfaceRollingResistanceTorque = SuspensionState.bWheelOnGround ?
+		Surface.RollingResistanceCoefficient * LocalState.WheelLoad * Context.R : 0.f;
 }
 
 void FVehicleWheelSolver::UpdateLinearVelocity(
@@ -681,7 +731,7 @@ FVector2f FVehicleWheelSolver::SolveTireForce(
 	UpdateSlipVelocity(LocalState, Context, bOnGround);
 
 	// transient slip for tire force
-	FVector2f TransientSlip = UpdateTransientSlip(LocalState, Context, bOnGround, TireConfig.RelaxationLength);
+	FVector2f TransientSlip = UpdateTransientSlip(LocalState, Context, bOnGround, TireConfig.RelaxationLength * Context.SurfaceRelaxationLengthScale);
 	
 	// not for tire force now but for abs and tc logic
 	UpdateSlipRatio(LocalState, Context, bOnGround);
@@ -731,8 +781,8 @@ FVector2f FVehicleWheelSolver::SolveTireForce(
 	bool bUseFyCurve = TireLUTs.Fy.bHasValidStiffness;
 
 	// magic formula
-	float MaxFx = TireConfig.MaxFx * Context.AvailableGrip * Context.LongForceScale;
-	float MaxFy = TireConfig.MaxFy * Context.AvailableGrip * Context.LatForceScale;
+	float MaxFx = TireConfig.MaxFx * Context.AvailableGrip * Context.LongForceScale * Context.SurfaceLongGripScale;
+	float MaxFy = TireConfig.MaxFy * Context.AvailableGrip * Context.LatForceScale * Context.SurfaceLatGripScale;
 	FVector2f MFTireForce = ConstraintTireForce;
 	if (bUseFxCurve)
 	{

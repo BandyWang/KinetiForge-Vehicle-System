@@ -299,6 +299,14 @@ struct KINETIFORGE_API FVehicleWheelSimState
 	float SignedCamberDegree = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
 	float DynFrictionMultiplier = 1.f;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Surface")
+	FName SurfaceName = NAME_None;
+	/** Index into the surface data asset's Surfaces array, -1 for the default surface */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Surface")
+	int32 SurfaceIndex = INDEX_NONE;
+	/** Rolling resistance torque from the surface, included in BrakeTorque */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Surface")
+	float SurfaceRollingResistanceTorque = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
 	FVector2f LocalLinearVelocity = FVector2f(0.f, 0.f);
 
@@ -346,6 +354,10 @@ struct KINETIFORGE_API FVehicleWheelSimContext
 	FVector3f LatForceDir = FVector3f(0.f);
 
 	float CamberLateralDrift = 0.f;
+
+	float SurfaceLongGripScale = 1.f;
+	float SurfaceLatGripScale = 1.f;
+	float SurfaceRelaxationLengthScale = 1.f;
 
 	float AvailableGrip = 0.f;
 	FVector2f GravityComp2D = FVector2f(0.f);
