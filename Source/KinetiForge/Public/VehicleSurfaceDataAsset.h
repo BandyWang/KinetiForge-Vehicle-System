@@ -41,8 +41,9 @@ public:
 
 	/**
 	* Builds the physics-thread lookup table. Later entries do not override earlier ones.
+	* TireGripMultipliers (keyed by SurfaceName) lets one tire grip differently on a surface, e.g. off-road tires on gravel.
 	*/
-	TSharedRef<const FVehicleSurfaceLookup, ESPMode::ThreadSafe> BuildLookup() const;
+	TSharedRef<const FVehicleSurfaceLookup, ESPMode::ThreadSafe> BuildLookup(const TMap<FName, float>* TireGripMultipliers = nullptr) const;
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Surface")
 	FVehicleSurfaceProperties FindSurface(const UPhysicalMaterial* PhysMaterial) const;

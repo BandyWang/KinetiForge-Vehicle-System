@@ -28,7 +28,8 @@ public:
 		const FVehicleWheelConfig& WheelConfig,
 		const FVehicleTireConfig& TireConfig,
 		const FVehicleSurfaceLookup* SurfaceLookup = nullptr,
-		const UPhysicalMaterial* ImpactPhysMaterial = nullptr
+		const UPhysicalMaterial* ImpactPhysMaterial = nullptr,
+		const FVehicleSurfaceConditions& SurfaceConditions = FVehicleSurfaceConditions()
 	);
 
 	void Substep(
@@ -86,7 +87,8 @@ private:
 		const FVehicleSuspensionSimState& SuspensionState,
 		const FVehicleTireConfig& TireConfig,
 		const FVehicleSurfaceLookup* SurfaceLookup,
-		const UPhysicalMaterial* ImpactPhysMaterial);
+		const UPhysicalMaterial* ImpactPhysMaterial,
+		const FVehicleSurfaceConditions& SurfaceConditions);
 	static void UpdateLinearVelocity(
 		FVehicleWheelSimState& LocalState,
 		const FVector3f& LongForceDir,

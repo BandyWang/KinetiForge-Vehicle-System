@@ -25,16 +25,30 @@ UVehicleSurfaceDataAsset::UVehicleSurfaceDataAsset()
 	Surfaces.Add(Dirt);
 }
 
-TSharedRef<const FVehicleSurfaceLookup, ESPMode::ThreadSafe> UVehicleSurfaceDataAsset::BuildLookup() const
+TSharedRef<const FVehicleSurfaceLookup, ESPMode::ThreadSafe> UVehicleSurfaceDataAsset::BuildLookup(const TMap<FName, float>* TireGripMultipliers) const
 {
 	TSharedRef<FVehicleSurfaceLookup, ESPMode::ThreadSafe> Lookup = MakeShared<FVehicleSurfaceLookup, ESPMode::ThreadSafe>();
 
 	Lookup->bIgnorePhysicalMaterialFriction = bIgnorePhysicalMaterialFriction;
 	Lookup->DefaultSurface = DefaultSurface;
 
+	auto ApplyTireMultiplier = [TireGripMultipliers](FVehicleSurfaceProperties& Props)
+	{
+		if (TireGripMultipliers)
+		{
+			if (const float* Multiplier = TireGripMultipliers->Find(Props.SurfaceName))
+			{
+				Props.GripScale *= FMath::Max(0.f, *Multiplier);
+			}
+		}
+	};
+
+	ApplyTireMultiplier(Lookup->DefaultSurface);
+
 	for (const FVehicleSurfaceEntry& Entry : Surfaces)
 	{
 		const int32 SurfaceIndex = Lookup->Surfaces.Add(Entry.Properties);
+		ApplyTireMultiplier(Lookup->Surfaces[SurfaceIndex]);
 
 		for (const TObjectPtr<UPhysicalMaterial>& PhysMaterial : Entry.PhysicalMaterials)
 		{
@@ -78,6 +92,9 @@ FVehicleSurfaceProperties UVehicleSurfaceDataAsset::MakeDryAsphalt()
 	Props.LateralGripScale = 1.f;
 	Props.RollingResistanceCoefficient = 0.012f;
 	Props.RelaxationLengthScale = 1.f;
+	Props.WetGripScale = 0.7f;
+	Props.WetRollingResistanceScale = 1.2f;
+	Props.IceGripScale = 0.15f;
 	return Props;
 }
 
@@ -85,12 +102,16 @@ FVehicleSurfaceProperties UVehicleSurfaceDataAsset::MakeWetAsphalt()
 {
 	FVehicleSurfaceProperties Props;
 	Props.SurfaceName = TEXT("WetAsphalt");
+	// for materials that are always wet (puddles, creek crossings); rain on dry asphalt uses WetGripScale instead
 	// wet mu ~0.5-0.8; no standing water (aquaplaning is not modeled)
 	Props.GripScale = 0.7f;
 	Props.LongitudinalGripScale = 1.f;
 	Props.LateralGripScale = 1.f;
 	Props.RollingResistanceCoefficient = 0.015f;
 	Props.RelaxationLengthScale = 1.f;
+	Props.WetGripScale = 0.85f;
+	Props.WetRollingResistanceScale = 1.f;
+	Props.IceGripScale = 0.2f;
 	return Props;
 }
 
@@ -104,6 +125,9 @@ FVehicleSurfaceProperties UVehicleSurfaceDataAsset::MakeGravel()
 	Props.LateralGripScale = 0.9f;
 	Props.RollingResistanceCoefficient = 0.025f;
 	Props.RelaxationLengthScale = 1.6f;
+	Props.WetGripScale = 0.85f;
+	Props.WetRollingResistanceScale = 1.1f;
+	Props.IceGripScale = 0.3f;
 	return Props;
 }
 
@@ -111,11 +135,14 @@ FVehicleSurfaceProperties UVehicleSurfaceDataAsset::MakeDirt()
 {
 	FVehicleSurfaceProperties Props;
 	Props.SurfaceName = TEXT("Dirt");
-	// dry packed dirt; wet or loose dirt should get its own entry with lower grip and higher Crr
+	// dry packed dirt; rain turns it to mud through WetGripScale / WetRollingResistanceScale
 	Props.GripScale = 0.65f;
 	Props.LongitudinalGripScale = 1.f;
 	Props.LateralGripScale = 0.95f;
 	Props.RollingResistanceCoefficient = 0.04f;
 	Props.RelaxationLengthScale = 1.4f;
+	Props.WetGripScale = 0.6f;
+	Props.WetRollingResistanceScale = 1.6f;
+	Props.IceGripScale = 0.25f;
 	return Props;
 }

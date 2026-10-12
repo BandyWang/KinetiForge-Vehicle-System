@@ -136,6 +136,32 @@ struct KINETIFORGE_API FVehicleTireConfig
 	*/
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "Curve: Camber To Lateral Drift"))
 	UCurveFloat* CamberToLateralDrift = nullptr;
+
+	/**
+	* Per-surface grip multiplier for this tire, keyed by the surface's SurfaceName.
+	* E.g. an off-road tire could use Gravel = 1.2, a slick Gravel = 0.7.
+	*/
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface")
+	TMap<FName, float> SurfaceGripMultipliers;
+
+	/**
+	* Road temperature (C) at which this tire has full grip.
+	*/
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface")
+	float OptimalRoadTemperature = 25.f;
+
+	/**
+	* Grip lost per degree C away from OptimalRoadTemperature. 0 = temperature has no effect.
+	* E.g. 0.004 loses 10% grip 25 C away from optimal.
+	*/
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface", meta = (ClampMin = "0.0"))
+	float RoadTemperatureGripFalloff = 0.f;
+
+	/**
+	* Lowest grip multiplier temperature alone can cause.
+	*/
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float MinTemperatureGripScale = 0.7f;
 };
 
 USTRUCT(BlueprintType)

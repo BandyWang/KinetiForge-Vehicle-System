@@ -26,7 +26,8 @@ void FVehicleWheelSolver::PreStep(
 	const FVehicleWheelConfig& WheelConfig,
 	const FVehicleTireConfig& TireConfig,
 	const FVehicleSurfaceLookup* SurfaceLookup,
-	const UPhysicalMaterial* ImpactPhysMaterial)
+	const UPhysicalMaterial* ImpactPhysMaterial,
+	const FVehicleSurfaceConditions& SurfaceConditions)
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(KinetiForgeVehicle_Wheel_WheelSolver_UpdateWheel);
 
@@ -57,7 +58,7 @@ void FVehicleWheelSolver::PreStep(
 	LocalState.WheelLoad = FMath::Max(0.f, SuspensionState.ForceAlongImpactNormal);
 
 	// friction multiplier, grip scales and rolling resistance of the road surface
-	ApplySurface(LocalState, Context, SuspensionState, TireConfig, SurfaceLookup, ImpactPhysMaterial);
+	ApplySurface(LocalState, Context, SuspensionState, TireConfig, SurfaceLookup, ImpactPhysMaterial, SurfaceConditions);
 
 	Context.GravityComp2D = CalculateGravityCompensationOnSlope(
 		LocalState, Context,
@@ -357,12 +358,21 @@ void FVehicleWheelSolver::ApplySurface(
 	const FVehicleSuspensionSimState& SuspensionState,
 	const FVehicleTireConfig& TireConfig,
 	const FVehicleSurfaceLookup* SurfaceLookup,
-	const UPhysicalMaterial* ImpactPhysMaterial)
+	const UPhysicalMaterial* ImpactPhysMaterial,
+	const FVehicleSurfaceConditions& SurfaceConditions)
 {
+	// tire grip vs road temperature, a property of the tire (works with or without surface data)
+	const float TemperatureDelta = FMath::Abs(SurfaceConditions.RoadTemperature - TireConfig.OptimalRoadTemperature);
+	const float TemperatureGripScale = FMath::Clamp(
+		1.f - TireConfig.RoadTemperatureGripFalloff * TemperatureDelta,
+		FMath::Min(TireConfig.MinTemperatureGripScale, 1.f),
+		1.f);
+
 	if (!SurfaceLookup)
 	{
 		// no surface data: legacy behavior
 		UpdateDynamicFrictionMultiplier(LocalState, Context, TireConfig, SuspensionState.ImpactFriction);
+		LocalState.DynFrictionMultiplier *= TemperatureGripScale;
 		LocalState.SurfaceIndex = INDEX_NONE;
 		LocalState.SurfaceName = NAME_None;
 		LocalState.SurfaceRollingResistanceTorque = 0.f;
@@ -376,8 +386,14 @@ void FVehicleWheelSolver::ApplySurface(
 	const FVehicleSurfaceProperties& Surface = SurfaceLookup->GetSurface(SurfaceIndex);
 	const bool bIgnoreImpactFriction = SurfaceIndex != INDEX_NONE && SurfaceLookup->bIgnorePhysicalMaterialFriction;
 
+	// weather: wet surfaces lose grip, wet surfaces at or below freezing turn to ice
+	const float Wetness = FMath::Clamp(SurfaceConditions.Wetness, 0.f, 1.f);
+	const bool bFrozen = SurfaceConditions.RoadTemperature <= 0.f;
+	const float WetGripScale = FMath::Lerp(1.f, bFrozen ? Surface.IceGripScale : Surface.WetGripScale, Wetness);
+	const float WetRollingResistanceScale = FMath::Lerp(1.f, Surface.WetRollingResistanceScale, Wetness);
+
 	UpdateDynamicFrictionMultiplier(LocalState, Context, TireConfig, SuspensionState.ImpactFriction, bIgnoreImpactFriction);
-	LocalState.DynFrictionMultiplier *= Surface.GripScale;
+	LocalState.DynFrictionMultiplier *= Surface.GripScale * WetGripScale * TemperatureGripScale;
 
 	LocalState.SurfaceIndex = SurfaceIndex;
 	LocalState.SurfaceName = Surface.SurfaceName;
@@ -388,7 +404,7 @@ void FVehicleWheelSolver::ApplySurface(
 
 	// rolling resistance torque = Crr * Fz * R (Fz in N, R in m)
 	LocalState.SurfaceRollingResistanceTorque = SuspensionState.bWheelOnGround ?
-		Surface.RollingResistanceCoefficient * LocalState.WheelLoad * Context.R : 0.f;
+		Surface.RollingResistanceCoefficient * WetRollingResistanceScale * LocalState.WheelLoad * Context.R : 0.f;
 }
 
 void FVehicleWheelSolver::UpdateLinearVelocity(

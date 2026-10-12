@@ -139,6 +139,8 @@ Detailed video tutorial: [How to configure vehicles](https://www.bilibili.com/vi
 
 Each surface sets a grip scale (relative to the tire's Global Friction Scale), extra longitudinal/lateral grip scales, a rolling resistance coefficient (torque = Crr × wheel load × radius) and a relaxation length scale. By default a mapped surface ignores the physical material's own `Friction`; turn off **Ignore Physical Material Friction** to multiply on top of the tire's friction combine mode instead. The current surface is reported in the wheel state as `SurfaceName`. Without a surface asset the wheel behaves exactly as before.
 
+**Weather and tires.** Call `SetSurfaceConditions` on a wheel (or `SetSurfaceConditionsOnActor` for a whole vehicle) with `Wetness` (0-1) and `RoadTemperature` (C). Each surface blends toward its `WetGripScale` / `WetRollingResistanceScale` as it gets wet, and uses `IceGripScale` when wet at or below 0 C. Per tire, `SurfaceGripMultipliers` (keyed by surface name) lets e.g. off-road tires grip better on gravel, and `OptimalRoadTemperature` / `RoadTemperatureGripFalloff` make grip depend on road temperature (off by default).
+
 ---
 
 ## 🏎️ Driving Feel & Tuning Tips

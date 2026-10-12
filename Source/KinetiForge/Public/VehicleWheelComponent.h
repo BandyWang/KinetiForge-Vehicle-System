@@ -68,6 +68,12 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Setup")
 	TObjectPtr<UVehicleSurfaceDataAsset> SurfaceData = nullptr;
 
+	/**
+	* Current weather on the road under this wheel. Set by the game's weather system.
+	*/
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Setup")
+	FVehicleSurfaceConditions SurfaceConditions;
+
 	/*
 	* For Suspension
 	*/
@@ -222,6 +228,16 @@ public:
 	/** Safe to call while the vehicle is simulating */
 	UFUNCTION(BlueprintCallable, Category = "VehicleWheel")
 	void SetSurfaceData(UVehicleSurfaceDataAsset* NewSurfaceData);
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleWheel")
+	const FVehicleSurfaceConditions& GetSurfaceConditions() { return SurfaceConditions; }
+
+	UFUNCTION(BlueprintCallable, Category = "VehicleWheel")
+	void SetSurfaceConditions(const FVehicleSurfaceConditions& NewConditions) { SurfaceConditions = NewConditions; }
+
+	/** Sets surface conditions on every wheel component of an actor (e.g. when the weather changes) */
+	UFUNCTION(BlueprintCallable, Category = "VehicleWheel")
+	static void SetSurfaceConditionsOnActor(AActor* Vehicle, const FVehicleSurfaceConditions& NewConditions);
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleWheel")
 	const FVehicleSuspensionKinematicsConfig& GetSuspensionKinematicsConfig() { return SuspensionKinematicsConfig; }

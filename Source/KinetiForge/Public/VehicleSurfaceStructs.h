@@ -53,6 +53,45 @@ struct KINETIFORGE_API FVehicleSurfaceProperties
 	*/
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.01"))
 	float RelaxationLengthScale = 1.f;
+
+	/**
+	* Grip multiplier when the surface is fully wet (Wetness = 1). Blended linearly with Wetness.
+	*/
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weather", meta = (ClampMin = "0.0"))
+	float WetGripScale = 1.f;
+
+	/**
+	* Rolling resistance multiplier when fully wet (e.g. dirt turning to mud). Blended linearly with Wetness.
+	*/
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weather", meta = (ClampMin = "0.0"))
+	float WetRollingResistanceScale = 1.f;
+
+	/**
+	* Grip multiplier used instead of WetGripScale when the surface is wet and the road is at or below 0 C (ice).
+	*/
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weather", meta = (ClampMin = "0.0"))
+	float IceGripScale = 1.f;
+};
+
+/**
+* Weather inputs for the surface model. Set by the game (weather system) on each wheel.
+*/
+USTRUCT(BlueprintType)
+struct KINETIFORGE_API FVehicleSurfaceConditions
+{
+	GENERATED_BODY()
+
+	/**
+	* 0 = dry, 1 = fully wet.
+	*/
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float Wetness = 0.f;
+
+	/**
+	* Road surface temperature in degrees Celsius.
+	*/
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float RoadTemperature = 20.f;
 };
 
 /**
