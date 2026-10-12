@@ -8,9 +8,22 @@ UVehicleSurfaceDataAsset::UVehicleSurfaceDataAsset()
 	DefaultSurface = MakeDryAsphalt();
 	DefaultSurface.SurfaceName = TEXT("Default");
 
+	// paved roads: highways, interstates, city streets, farm roads
 	FVehicleSurfaceEntry DryAsphalt;
 	DryAsphalt.Properties = MakeDryAsphalt();
 	Surfaces.Add(DryAsphalt);
+
+	FVehicleSurfaceEntry Concrete;
+	Concrete.Properties = MakeConcrete();
+	Surfaces.Add(Concrete);
+
+	FVehicleSurfaceEntry CityAsphalt;
+	CityAsphalt.Properties = MakeCityAsphalt();
+	Surfaces.Add(CityAsphalt);
+
+	FVehicleSurfaceEntry ChipSeal;
+	ChipSeal.Properties = MakeChipSeal();
+	Surfaces.Add(ChipSeal);
 
 	FVehicleSurfaceEntry WetAsphalt;
 	WetAsphalt.Properties = MakeWetAsphalt();
@@ -23,6 +36,11 @@ UVehicleSurfaceDataAsset::UVehicleSurfaceDataAsset()
 	FVehicleSurfaceEntry Dirt;
 	Dirt.Properties = MakeDirt();
 	Surfaces.Add(Dirt);
+
+	// desert tracks and sandy shoulders
+	FVehicleSurfaceEntry Sand;
+	Sand.Properties = MakeSand();
+	Surfaces.Add(Sand);
 
 	// for materials that are always snowy (ski areas, high Sierra roads in winter)
 	FVehicleSurfaceEntry Snow;
@@ -96,6 +114,7 @@ FVehicleSurfaceProperties UVehicleSurfaceDataAsset::FindSurface(const UPhysicalM
 FVehicleSurfaceProperties UVehicleSurfaceDataAsset::MakeDryAsphalt()
 {
 	FVehicleSurfaceProperties Props;
+	// well-kept highway asphalt
 	Props.SurfaceName = TEXT("DryAsphalt");
 	Props.GripScale = 1.f;
 	Props.LongitudinalGripScale = 1.f;
@@ -171,5 +190,69 @@ FVehicleSurfaceProperties UVehicleSurfaceDataAsset::MakeSnow()
 	Props.WetGripScale = 0.8f;
 	Props.WetRollingResistanceScale = 1.5f;
 	Props.IceGripScale = 0.5f;
+	return Props;
+}
+
+FVehicleSurfaceProperties UVehicleSurfaceDataAsset::MakeConcrete()
+{
+	FVehicleSurfaceProperties Props;
+	Props.SurfaceName = TEXT("Concrete");
+	// grooved interstate concrete: slightly less dry grip than asphalt, drains water well
+	Props.GripScale = 0.95f;
+	Props.LongitudinalGripScale = 1.f;
+	Props.LateralGripScale = 1.f;
+	Props.RollingResistanceCoefficient = 0.011f;
+	Props.RelaxationLengthScale = 1.f;
+	Props.WetGripScale = 0.75f;
+	Props.WetRollingResistanceScale = 1.2f;
+	Props.IceGripScale = 0.15f;
+	return Props;
+}
+
+FVehicleSurfaceProperties UVehicleSurfaceDataAsset::MakeCityAsphalt()
+{
+	FVehicleSurfaceProperties Props;
+	Props.SurfaceName = TEXT("CityAsphalt");
+	// worn, polished by traffic, oil residue makes the first rain especially slippery
+	Props.GripScale = 0.9f;
+	Props.LongitudinalGripScale = 1.f;
+	Props.LateralGripScale = 1.f;
+	Props.RollingResistanceCoefficient = 0.013f;
+	Props.RelaxationLengthScale = 1.f;
+	Props.WetGripScale = 0.6f;
+	Props.WetRollingResistanceScale = 1.2f;
+	Props.IceGripScale = 0.15f;
+	return Props;
+}
+
+FVehicleSurfaceProperties UVehicleSurfaceDataAsset::MakeChipSeal()
+{
+	FVehicleSurfaceProperties Props;
+	Props.SurfaceName = TEXT("ChipSeal");
+	// rural / farm roads: coarse aggregate, good grip but rough and draggy
+	Props.GripScale = 0.95f;
+	Props.LongitudinalGripScale = 1.f;
+	Props.LateralGripScale = 1.f;
+	Props.RollingResistanceCoefficient = 0.016f;
+	Props.RelaxationLengthScale = 1.1f;
+	Props.WetGripScale = 0.75f;
+	Props.WetRollingResistanceScale = 1.2f;
+	Props.IceGripScale = 0.2f;
+	return Props;
+}
+
+FVehicleSurfaceProperties UVehicleSurfaceDataAsset::MakeSand()
+{
+	FVehicleSurfaceProperties Props;
+	Props.SurfaceName = TEXT("Sand");
+	// loose desert sand: low grip, very high rolling resistance; damp sand is firmer
+	Props.GripScale = 0.55f;
+	Props.LongitudinalGripScale = 1.f;
+	Props.LateralGripScale = 0.9f;
+	Props.RollingResistanceCoefficient = 0.15f;
+	Props.RelaxationLengthScale = 2.f;
+	Props.WetGripScale = 1.1f;
+	Props.WetRollingResistanceScale = 0.6f;
+	Props.IceGripScale = 0.4f;
 	return Props;
 }

@@ -133,7 +133,7 @@ Detailed video tutorial: [How to configure vehicles](https://www.bilibili.com/vi
 - **Low‑level wheel/axle components** – `WheelComponent` and `AxleComponent` can be used standalone, without a `DriveAssembly`. In that case you must manually call `UpdatePhysics()` on them every tick, and they **must** run on the physics thread (e.g., triggered by `AsyncPhysicsTick`).
 
 ### Road Surfaces
-1. Create a **Vehicle Surface Data Asset** (Content Browser > Miscellaneous > Data Asset > `VehicleSurfaceDataAsset`). It comes pre-filled with Dry Asphalt, Wet Asphalt, Gravel, Dirt and Snow.
+1. Create a **Vehicle Surface Data Asset** (Content Browser > Miscellaneous > Data Asset > `VehicleSurfaceDataAsset`). It comes pre-filled with presets for highway asphalt (DryAsphalt), interstate Concrete, CityAsphalt, farm-road ChipSeal, WetAsphalt, Gravel, Dirt, desert Sand and Snow.
 2. Add your road and landscape **Physical Materials** to each entry (or map **Physical Surface types** instead).
 3. Assign the asset to **Surface Data** on each `WheelComponent`.
 

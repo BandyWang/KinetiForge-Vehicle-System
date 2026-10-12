@@ -10,7 +10,8 @@
 /**
 * Data-driven road surface table.
 * Maps physical materials (or physical surface types) to grip and rolling resistance.
-* A new asset comes pre-filled with Dry Asphalt, Wet Asphalt, Gravel, Dirt and Snow;
+* A new asset comes pre-filled with presets for common road types
+* (highway asphalt, interstate concrete, city asphalt, farm chip seal, wet asphalt, gravel, dirt, desert sand, snow);
 * assign your landscape / road physical materials to each entry.
 */
 UCLASS(BlueprintType)
@@ -60,4 +61,8 @@ public:
 	static FVehicleSurfaceProperties MakeGravel();
 	static FVehicleSurfaceProperties MakeDirt();
 	static FVehicleSurfaceProperties MakeSnow();
+	static FVehicleSurfaceProperties MakeConcrete();
+	static FVehicleSurfaceProperties MakeCityAsphalt();
+	static FVehicleSurfaceProperties MakeChipSeal();
+	static FVehicleSurfaceProperties MakeSand();
 };
