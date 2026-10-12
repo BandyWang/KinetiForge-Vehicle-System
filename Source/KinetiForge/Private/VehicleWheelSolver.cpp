@@ -66,6 +66,11 @@ void FVehicleWheelSolver::PreStep(
 	{
 		LocalState.DynFrictionMultiplier *= LocalState.TireThermalGripScale;
 	}
+	// tread wear and blowout (computed at the end of the last step)
+	if (TireConfig.Wear.bEnableWear)
+	{
+		LocalState.DynFrictionMultiplier *= LocalState.TireWearGripScale;
+	}
 
 	Context.GravityComp2D = CalculateGravityCompensationOnSlope(
 		LocalState, Context,
@@ -191,6 +196,11 @@ void FVehicleWheelSolver::UpdateThermals(
 	const float Speed = LocalState.LocalLinearVelocity.Size();
 	const bool bOnGround = SuspensionState.bWheelOnGround;
 
+	const FVehicleTireWearConfig& Wear = TireConfig.Wear;
+	const float Wetness = FMath::Clamp(SurfaceConditions.Wetness, 0.f, 1.f);
+	// tread burnt off by heat above MaxTreadTemperature this step (fraction of a full tread)
+	float BurnOffWear = 0.f;
+
 	// ---------------- tire ----------------
 	const FVehicleTireThermalConfig& Tire = TireConfig.Thermal;
 	if (Tire.bEnableThermalModel)
@@ -209,7 +219,6 @@ void FVehicleWheelSolver::UpdateThermals(
 		const float HysteresisHeat = bOnGround ? Tire.HysteresisHeatCoefficient * LocalState.WheelLoad * RollSpeed : 0.f;
 
 		const float AirG = Tire.AirCoolingBase + Tire.AirCoolingPerSpeed * Speed;
-		const float Wetness = FMath::Clamp(SurfaceConditions.Wetness, 0.f, 1.f);
 		const float RoadG = bOnGround ? Tire.RoadConductance * (1.f + Tire.WetCoolingFactor * Wetness) : 0.f;
 
 		const float OldSurface = LocalState.TireSurfaceTemperature;
@@ -218,6 +227,15 @@ void FVehicleWheelSolver::UpdateThermals(
 			Tire.SurfaceToCoreConductance, LocalState.TireCoreTemperature,
 			AirG, AirTemperature,
 			RoadG, SurfaceConditions.RoadTemperature);
+
+		// past MaxTreadTemperature the rubber burns off (smoke) instead of getting hotter
+		if (Wear.bEnableWear && LocalState.TireSurfaceTemperature > Wear.MaxTreadTemperature)
+		{
+			const float ExcessEnergyMJ = (LocalState.TireSurfaceTemperature - Wear.MaxTreadTemperature) * Tire.SurfaceHeatCapacity * 1e-6f;
+			BurnOffWear = ExcessEnergyMJ / FMath::Max(Wear.BurnOffMegajoules, 0.001f);
+			LocalState.TireSurfaceTemperature = Wear.MaxTreadTemperature;
+		}
+
 		LocalState.TireCoreTemperature = StepNode(
 			LocalState.TireCoreTemperature, Tire.CoreHeatCapacity, HysteresisHeat, Dt,
 			Tire.SurfaceToCoreConductance, LocalState.TireSurfaceTemperature,
@@ -237,6 +255,34 @@ void FVehicleWheelSolver::UpdateThermals(
 	{
 		LocalState.bTireThermalInitialized = false;
 		LocalState.TireThermalGripScale = 1.f;
+	}
+
+	// ---------------- tread wear ----------------
+	if (Wear.bEnableWear)
+	{
+		const float OverheatScale = Tire.bEnableThermalModel ?
+			OverheatWearScale(LocalState.TireSurfaceTemperature, Wear.OverheatTemperature, Wear.OverheatWindow, Wear.OverheatWearMultiplier) : 1.f;
+		const float SlipEnergyMJ = Context.AccumulatedSlipEnergy * 1e-6f;
+		LocalState.TreadRemaining = FMath::Max(
+			LocalState.TreadRemaining - SlipEnergyMJ * Wear.WearPerMegajoule * OverheatScale - BurnOffWear, 0.f);
+
+		const bool bOverPressure = Tire.bEnableThermalModel && Wear.BlowoutPressure > 0.f && LocalState.TirePressure > Wear.BlowoutPressure;
+		if (LocalState.TreadRemaining <= 0.f || bOverPressure)
+		{
+			LocalState.bTireBlown = true;
+		}
+		if (LocalState.bTireBlown)
+		{
+			LocalState.TirePressure = 0.f;
+		}
+
+		LocalState.TireWearGripScale =
+			TreadGripScale(LocalState.TreadRemaining, Wear.WornGripScale, Wetness, Wear.WetWornGripLoss) *
+			(LocalState.bTireBlown ? FMath::Clamp(Wear.BlownGripScale, 0.f, 1.f) : 1.f);
+	}
+	else
+	{
+		LocalState.TireWearGripScale = 1.f;
 	}
 
 	// ---------------- brake ----------------
@@ -339,6 +385,13 @@ void FVehicleWheelSolver::ResetTireTemperature(float SurfaceTemperature, float C
 	State.TireSurfaceTemperature = SurfaceTemperature;
 	State.TireCoreTemperature = CoreTemperature;
 	State.bTireThermalInitialized = true;
+}
+
+void FVehicleWheelSolver::ResetTireWear(float TreadRemaining)
+{
+	State.TreadRemaining = FMath::Clamp(TreadRemaining, 0.f, 1.f);
+	State.bTireBlown = false;
+	State.TireWearGripScale = 1.f;
 }
 
 void FVehicleWheelSolver::ResetBrakeTemperature(float Temperature)

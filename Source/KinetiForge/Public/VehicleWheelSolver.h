@@ -71,6 +71,9 @@ public:
 	/** Sets tire temperatures (C), e.g. for tire blankets. Below -273 = the current air temperature. */
 	void ResetTireTemperature(float SurfaceTemperature, float CoreTemperature);
 
+	/** Fits fresh tires (TreadRemaining 1) or sets a part-worn tread, and repairs a blowout. */
+	void ResetTireWear(float TreadRemaining = 1.f);
+
 	/** Sets the brake disc temperature (C). Below -273 = the current air temperature. */
 	void ResetBrakeTemperature(float Temperature);
 

@@ -241,6 +241,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "VehicleWheel")
 	void SetTireTemperature(float SurfaceTemperature, float CoreTemperature) { Wheel.ResetTireTemperature(SurfaceTemperature, CoreTemperature); }
 
+	/** Fits fresh tires (1) or sets a part-worn tread (0-1), and repairs a blowout. */
+	UFUNCTION(BlueprintCallable, Category = "VehicleWheel")
+	void SetTireTread(float TreadRemaining = 1.f) { Wheel.ResetTireWear(TreadRemaining); }
+
 	/** Sets the brake disc temperature in C. Below -273 = reset to the air temperature. */
 	UFUNCTION(BlueprintCallable, Category = "VehicleWheel")
 	void SetBrakeTemperature(float Temperature) { Wheel.ResetBrakeTemperature(Temperature); }

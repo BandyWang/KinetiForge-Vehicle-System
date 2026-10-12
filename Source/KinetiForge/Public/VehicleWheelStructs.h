@@ -235,6 +235,77 @@ struct KINETIFORGE_API FVehicleBrakeThermalConfig
 };
 
 USTRUCT(BlueprintType)
+struct KINETIFORGE_API FVehicleTireWearConfig
+{
+	GENERATED_BODY()
+
+	/**
+	* Tread wears with sliding energy and overheating; worn or blown tires lose grip.
+	*/
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	bool bEnableWear = false;
+
+	/**
+	* Tread used per megajoule of sliding friction work at the contact patch.
+	* 0.05 = a new tire is gone after 20 MJ (roughly a few hard track sessions).
+	*/
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0"))
+	float WearPerMegajoule = 0.05f;
+
+	/**
+	* Dry grip multiplier of a fully worn tire.
+	*/
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float WornGripScale = 0.85f;
+
+	/**
+	* Extra grip lost by a fully worn tire on a fully wet road (no tread to clear water).
+	*/
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float WetWornGripLoss = 0.5f;
+
+	/**
+	* Tread surface temperature (C) above which the rubber blisters and wear speeds up. Needs the thermal model.
+	*/
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float OverheatTemperature = 130.f;
+
+	/**
+	* Wear is multiplied by (1 + OverheatWearMultiplier) for every OverheatWindow degrees above OverheatTemperature.
+	*/
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0"))
+	float OverheatWearMultiplier = 4.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "1.0"))
+	float OverheatWindow = 50.f;
+
+	/**
+	* Tread surface can't get hotter than this (C): past it the rubber burns off (smoke) instead.
+	* The excess heat is turned into wear. Needs the thermal model.
+	*/
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float MaxTreadTemperature = 250.f;
+
+	/**
+	* Megajoules of excess heat above MaxTreadTemperature that burn off the whole tread.
+	*/
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.001"))
+	float BurnOffMegajoules = 2.f;
+
+	/**
+	* The tire blows out above this gauge pressure (bar). 0 = never. Needs the thermal model.
+	*/
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0"))
+	float BlowoutPressure = 4.f;
+
+	/**
+	* Grip multiplier of a blown tire (running on the carcass or rim).
+	*/
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float BlownGripScale = 0.3f;
+};
+
+USTRUCT(BlueprintType)
 struct KINETIFORGE_API FVehicleTireConfig
 {
 	GENERATED_BODY()
@@ -380,6 +451,9 @@ struct KINETIFORGE_API FVehicleTireConfig
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Thermal")
 	FVehicleTireThermalConfig Thermal;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wear")
+	FVehicleTireWearConfig Wear;
 };
 
 USTRUCT(BlueprintType)
@@ -614,6 +688,15 @@ struct KINETIFORGE_API FVehicleWheelSimState
 	float BrakeTemperature = 20.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Thermal")
 	float BrakeFrictionScale = 1.f;
+
+	/** 1 = new tread, 0 = worn down to the cords */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Wear")
+	float TreadRemaining = 1.f;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Wear")
+	bool bTireBlown = false;
+	/** Grip multiplier from wear and blowout */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Wear")
+	float TireWearGripScale = 1.f;
 
 	bool bTireThermalInitialized = false;
 	bool bBrakeThermalInitialized = false;

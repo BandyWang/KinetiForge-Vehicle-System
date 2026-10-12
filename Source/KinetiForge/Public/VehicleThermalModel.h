@@ -80,6 +80,30 @@ namespace VehicleThermalModel
 	}
 
 	/**
+	* Wear multiplier from tread temperature: 1 up to OverheatTemperature,
+	* then grows linearly by OverheatWearMultiplier for every OverheatWindow degrees above it (blistering, graining).
+	*/
+	FORCEINLINE float OverheatWearScale(
+		const float T, const float OverheatTemperature, const float OverheatWindow, const float OverheatWearMultiplier)
+	{
+		const float Excess = FMath::Max(T - OverheatTemperature, 0.f) / FMath::Max(OverheatWindow, 1.f);
+		return 1.f + FMath::Max(OverheatWearMultiplier, 0.f) * Excess;
+	}
+
+	/**
+	* Grip scale from remaining tread (1 = new, 0 = down to the cords).
+	* Dry grip falls toward WornGripScale; on a wet road a worn tire also can't clear water.
+	*/
+	FORCEINLINE float TreadGripScale(
+		const float TreadRemaining, const float WornGripScale, const float Wetness, const float WetWornGripLoss)
+	{
+		const float Worn = 1.f - FMath::Clamp(TreadRemaining, 0.f, 1.f);
+		const float Dry = FMath::Lerp(1.f, FMath::Clamp(WornGripScale, 0.f, 1.f), Worn);
+		const float Wet = 1.f - FMath::Clamp(Wetness, 0.f, 1.f) * FMath::Clamp(WetWornGripLoss, 0.f, 1.f) * Worn;
+		return Dry * Wet;
+	}
+
+	/**
 	* Brush-model pneumatic trail ratio t / t0.
 	* Lambda: how far the contact patch is into sliding, 0 = no slip, 1 = fully sliding (at the friction peak).
 	*/
