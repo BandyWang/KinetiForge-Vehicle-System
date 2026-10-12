@@ -48,6 +48,32 @@ public:
 
 	);
 
+	/**
+	* Tire and brake temperatures, from the energy accumulated over the last macro step.
+	* Call after PostStep.
+	*/
+	void UpdateThermals(
+		const FVehicleTireConfig& TireConfig,
+		const FVehicleBrakeThermalConfig& BrakeThermalConfig,
+		const FVehicleSurfaceConditions& SurfaceConditions,
+		const FVehicleSuspensionSimState& SuspensionState
+	);
+
+	/**
+	* Self-aligning torque and torque about the steering axis. Call after PostStep.
+	*/
+	void UpdateAligningTorque(
+		const FVehicleTireConfig& TireConfig,
+		const FVehicleSuspensionSimState& SuspensionState,
+		const FTransform& AsyncChassisWorldTransform
+	);
+
+	/** Sets tire temperatures (C), e.g. for tire blankets. Below -273 = the current air temperature. */
+	void ResetTireTemperature(float SurfaceTemperature, float CoreTemperature);
+
+	/** Sets the brake disc temperature (C). Below -273 = the current air temperature. */
+	void ResetBrakeTemperature(float Temperature);
+
 	void DrawWheelForce(
 		UVehicleWheelComponent* WheelComponent,
 		const FVehicleSuspensionSimState& SuspensionState,

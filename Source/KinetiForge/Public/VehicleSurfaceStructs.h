@@ -94,6 +94,12 @@ struct KINETIFORGE_API FVehicleSurfaceConditions
 	float RoadTemperature = 20.f;
 
 	/**
+	* Air temperature in degrees Celsius. Tires and brakes cool toward it (thermal models only).
+	*/
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float AirTemperature = 20.f;
+
+	/**
 	* 0 = no snow, 1 = road fully covered by snow.
 	* Blends whatever surface the wheel is on toward the surface data's SnowSurface.
 	*/

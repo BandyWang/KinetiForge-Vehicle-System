@@ -295,6 +295,15 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
 	float GetSteeringValue() { return State.RealSteeringValue; }
 
+	/**
+	* Unit: N*m. Sum of both wheels' torque about their steering axes (self-aligning torque,
+	* caster trail, scrub radius and weight jacking). 0 if this axle does not steer.
+	* Same sign as the steering angle: when the wheels self-center it opposes the steering angle.
+	* Divide by the steering ratio and scale to drive a force feedback wheel.
+	*/
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleAxleAssembly")
+	float GetSteeringRackTorque();
+
 	UFUNCTION(BlueprintCallable, Category = "VehicleAxleAssembly")
 	void GetSteeringAngle(float& OutLeft, float& OutRight) 
 	{

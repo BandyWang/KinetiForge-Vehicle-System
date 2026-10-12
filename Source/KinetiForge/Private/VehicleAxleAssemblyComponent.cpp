@@ -651,6 +651,22 @@ void UVehicleAxleAssemblyComponent::UpdateTrackWidth()
 	SetWheelPosition(AxleConfig.TrackWidth);
 }
 
+float UVehicleAxleAssemblyComponent::GetSteeringRackTorque()
+{
+	if (!AxleSteeringConfig.bAffectedBySteering) return 0.f;
+
+	float Torque = 0.f;
+	if (UVehicleWheelComponent* WheelL = LeftWheel.Get())
+	{
+		Torque += WheelL->GetSteeringAxisTorque();
+	}
+	if (UVehicleWheelComponent* WheelR = RightWheel.Get())
+	{
+		Torque += WheelR->GetSteeringAxisTorque();
+	}
+	return Torque;
+}
+
 float UVehicleAxleAssemblyComponent::GetTrackWidth()
 {
 	UVehicleWheelComponent* WheelL = LeftWheel.Get();
