@@ -136,6 +136,32 @@ struct KINETIFORGE_API FVehicleTireConfig
 	*/
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (DisplayName = "Curve: Camber To Lateral Drift"))
 	UCurveFloat* CamberToLateralDrift = nullptr;
+
+	/**
+	* Per-surface grip multiplier for this tire, keyed by the surface's SurfaceName.
+	* E.g. an off-road tire could use Gravel = 1.2, a slick Gravel = 0.7.
+	*/
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface")
+	TMap<FName, float> SurfaceGripMultipliers;
+
+	/**
+	* Road temperature (C) at which this tire has full grip.
+	*/
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface")
+	float OptimalRoadTemperature = 25.f;
+
+	/**
+	* Grip lost per degree C away from OptimalRoadTemperature. 0 = temperature has no effect.
+	* E.g. 0.004 loses 10% grip 25 C away from optimal.
+	*/
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface", meta = (ClampMin = "0.0"))
+	float RoadTemperatureGripFalloff = 0.f;
+
+	/**
+	* Lowest grip multiplier temperature alone can cause.
+	*/
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float MinTemperatureGripScale = 0.7f;
 };
 
 USTRUCT(BlueprintType)
@@ -299,6 +325,14 @@ struct KINETIFORGE_API FVehicleWheelSimState
 	float SignedCamberDegree = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
 	float DynFrictionMultiplier = 1.f;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Surface")
+	FName SurfaceName = NAME_None;
+	/** Index into the surface data asset's Surfaces array, -1 for the default surface */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Surface")
+	int32 SurfaceIndex = INDEX_NONE;
+	/** Rolling resistance torque from the surface, included in BrakeTorque */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Surface")
+	float SurfaceRollingResistanceTorque = 0.f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
 	FVector2f LocalLinearVelocity = FVector2f(0.f, 0.f);
 
@@ -346,6 +380,10 @@ struct KINETIFORGE_API FVehicleWheelSimContext
 	FVector3f LatForceDir = FVector3f(0.f);
 
 	float CamberLateralDrift = 0.f;
+
+	float SurfaceLongGripScale = 1.f;
+	float SurfaceLatGripScale = 1.f;
+	float SurfaceRelaxationLengthScale = 1.f;
 
 	float AvailableGrip = 0.f;
 	FVector2f GravityComp2D = FVector2f(0.f);

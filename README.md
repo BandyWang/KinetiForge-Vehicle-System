@@ -132,6 +132,15 @@ Detailed video tutorial: [How to configure vehicles](https://www.bilibili.com/vi
 - **Multiple DriveAssemblies** – You can have several drive assemblies in one Actor. For example, place one assembly for front wheels and another for rear wheels if they are powered by different engines.  
 - **Low‑level wheel/axle components** – `WheelComponent` and `AxleComponent` can be used standalone, without a `DriveAssembly`. In that case you must manually call `UpdatePhysics()` on them every tick, and they **must** run on the physics thread (e.g., triggered by `AsyncPhysicsTick`).
 
+### Road Surfaces
+1. Create a **Vehicle Surface Data Asset** (Content Browser > Miscellaneous > Data Asset > `VehicleSurfaceDataAsset`). It comes pre-filled with presets for highway asphalt (DryAsphalt), interstate Concrete, CityAsphalt, farm-road ChipSeal, WetAsphalt, Gravel, Dirt, desert Sand and Snow.
+2. Add your road and landscape **Physical Materials** to each entry (or map **Physical Surface types** instead).
+3. Assign the asset to **Surface Data** on each `WheelComponent`.
+
+Each surface sets a grip scale (relative to the tire's Global Friction Scale), extra longitudinal/lateral grip scales, a rolling resistance coefficient (torque = Crr × wheel load × radius) and a relaxation length scale. By default a mapped surface ignores the physical material's own `Friction`; turn off **Ignore Physical Material Friction** to multiply on top of the tire's friction combine mode instead. The current surface is reported in the wheel state as `SurfaceName`. Without a surface asset the wheel behaves exactly as before.
+
+**Weather and tires.** Call `SetSurfaceConditions` on a wheel (or `SetSurfaceConditionsOnActor` for a whole vehicle) with `Wetness` (0-1) and `RoadTemperature` (C). Each surface blends toward its `WetGripScale` / `WetRollingResistanceScale` as it gets wet, and uses `IceGripScale` when wet at or below 0 C. `SnowCover` (0-1) blends any road toward the asset's `SnowSurface`, so a highway can snow over during a storm. Per tire, `SurfaceGripMultipliers` (keyed by surface name) lets e.g. off-road tires grip better on gravel, and `OptimalRoadTemperature` / `RoadTemperatureGripFalloff` make grip depend on road temperature (off by default).
+
 ---
 
 ## 🏎️ Driving Feel & Tuning Tips

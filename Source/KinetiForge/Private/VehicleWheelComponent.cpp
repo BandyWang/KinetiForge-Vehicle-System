@@ -3,6 +3,7 @@
 
 #include "VehicleWheelComponent.h"
 #include "VehicleWheelCoordinatorComponent.h"
+#include "VehicleSurfaceDataAsset.h"
 #include "VehicleAxleAssemblyComponent.h"
 #include "VehicleUtilities.h"
 #include "AsyncTickFunctions.h"
@@ -400,12 +401,21 @@ void UVehicleWheelComponent::FinalizePreStepSolidAxleSuspension(
 void UVehicleWheelComponent::PreStepWheel(
 	float InMacroDeltaTime)
 {
+	TSharedPtr<const FVehicleSurfaceLookup, ESPMode::ThreadSafe> LocalSurfaceLookup;
+	{
+		FScopeLock Lock(&SurfaceLookupLock);
+		LocalSurfaceLookup = SurfaceLookup;
+	}
+
 	Wheel.PreStep(
 		InMacroDeltaTime, 
 		ChassisAsyncWorldTransform,
 		Suspension.State, 
 		WheelConfig, 
-		TireConfig
+		TireConfig,
+		LocalSurfaceLookup.Get(),
+		Suspension.RayCastResult.PhysMaterial.Get(),
+		SurfaceConditions
 	);
 }
 
@@ -472,6 +482,8 @@ void UVehicleWheelComponent::CopyWheelConfig(const UVehicleWheelComponent* Sourc
 	Target->WheelConfig = Source->WheelConfig;
 	Target->TireConfig = Source->TireConfig;
 	Target->ABSConfig = Source->ABSConfig;
+	Target->SurfaceData = Source->SurfaceData;
+	Target->SurfaceConditions = Source->SurfaceConditions;
 	Target->SuspensionKinematicsConfig = Source->SuspensionKinematicsConfig;
 	Target->SuspensionSpringConfig = Source->SuspensionSpringConfig;
 	Target->bUpdateAnimAutomatically = Source->bUpdateAnimAutomatically;
@@ -505,6 +517,7 @@ void UVehicleWheelComponent::InitializeWheel()
 
 	Suspension.Initialize(this);
 	Wheel.Initialize(TireConfig);
+	RebuildSurfaceLookup();
 
 	CacheDesignedHubTransform();
 
@@ -551,11 +564,45 @@ void UVehicleWheelComponent::SetTireConfig(const FVehicleTireConfig& NewConfig)
 {
 	TireConfig = NewConfig;
 	Wheel.UpdateCachedLUTs(NewConfig);
+	// tire-specific surface grip multipliers are baked into the lookup
+	RebuildSurfaceLookup();
 }
 
 void UVehicleWheelComponent::SetABSConfig(const FVehicleABSConfig& NewConfig)
 {
 	ABSConfig = NewConfig;
+}
+
+void UVehicleWheelComponent::SetSurfaceData(UVehicleSurfaceDataAsset* NewSurfaceData)
+{
+	SurfaceData = NewSurfaceData;
+	RebuildSurfaceLookup();
+}
+
+void UVehicleWheelComponent::RebuildSurfaceLookup()
+{
+	TSharedPtr<const FVehicleSurfaceLookup, ESPMode::ThreadSafe> NewLookup;
+	if (IsValid(SurfaceData))
+	{
+		NewLookup = SurfaceData->BuildLookup(&TireConfig.SurfaceGripMultipliers);
+	}
+
+	FScopeLock Lock(&SurfaceLookupLock);
+	SurfaceLookup = NewLookup;
+}
+
+void UVehicleWheelComponent::SetSurfaceConditionsOnActor(AActor* Vehicle, const FVehicleSurfaceConditions& NewConditions)
+{
+	if (!IsValid(Vehicle))
+	{
+		return;
+	}
+
+	TInlineComponentArray<UVehicleWheelComponent*> Wheels(Vehicle);
+	for (UVehicleWheelComponent* WheelComp : Wheels)
+	{
+		WheelComp->SetSurfaceConditions(NewConditions);
+	}
 }
 
 void UVehicleWheelComponent::SetSuspensionKinematicsConfig(const FVehicleSuspensionKinematicsConfig& NewConfig)
@@ -1314,4 +1361,5 @@ void UVehicleWheelComponent::UpdateCachedLookUpTables()
 {
 	Suspension.UpdateCachedLUTs(SuspensionKinematicsConfig);
 	Wheel.UpdateCachedLUTs(TireConfig);
+	RebuildSurfaceLookup();
 }

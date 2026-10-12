@@ -10,6 +10,7 @@
 #include "VehicleWheelComponent.generated.h"	//generated.h must be the last
 
 class UVehicleWheelCoordinatorComponent;
+class UVehicleSurfaceDataAsset;
 
 /**
 * The WheelComponent is a raycast wheel with simple suspension kinematics.
@@ -59,6 +60,19 @@ protected:
 	FVehicleTireConfig TireConfig;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Setup")
 	FVehicleABSConfig ABSConfig;
+
+	/**
+	* Road surface table (grip, rolling resistance per physical material).
+	* If empty, the tire uses the physical material's Friction only (legacy behavior).
+	*/
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Setup")
+	TObjectPtr<UVehicleSurfaceDataAsset> SurfaceData = nullptr;
+
+	/**
+	* Current weather on the road under this wheel. Set by the game's weather system.
+	*/
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Setup")
+	FVehicleSurfaceConditions SurfaceConditions;
 
 	/*
 	* For Suspension
@@ -113,6 +127,11 @@ protected:
 	FVehicleSuspensionSolver Suspension;
 	//wheel movement
 	FVehicleWheelSolver Wheel;
+
+	// immutable surface table read by the physics thread; swapped as a whole under SurfaceLookupLock
+	TSharedPtr<const FVehicleSurfaceLookup, ESPMode::ThreadSafe> SurfaceLookup;
+	mutable FCriticalSection SurfaceLookupLock;
+	void RebuildSurfaceLookup();
 
 	FTransform ChassisAsyncWorldTransform;
 	FTransform3f DesignedHubLocalTransform;
@@ -202,6 +221,23 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "VehicleWheel")
 	void SetABSConfig(const FVehicleABSConfig& NewConfig);
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleWheel")
+	UVehicleSurfaceDataAsset* GetSurfaceData() { return SurfaceData; }
+
+	/** Safe to call while the vehicle is simulating */
+	UFUNCTION(BlueprintCallable, Category = "VehicleWheel")
+	void SetSurfaceData(UVehicleSurfaceDataAsset* NewSurfaceData);
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleWheel")
+	const FVehicleSurfaceConditions& GetSurfaceConditions() { return SurfaceConditions; }
+
+	UFUNCTION(BlueprintCallable, Category = "VehicleWheel")
+	void SetSurfaceConditions(const FVehicleSurfaceConditions& NewConditions) { SurfaceConditions = NewConditions; }
+
+	/** Sets surface conditions on every wheel component of an actor (e.g. when the weather changes) */
+	UFUNCTION(BlueprintCallable, Category = "VehicleWheel")
+	static void SetSurfaceConditionsOnActor(AActor* Vehicle, const FVehicleSurfaceConditions& NewConditions);
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "VehicleWheel")
 	const FVehicleSuspensionKinematicsConfig& GetSuspensionKinematicsConfig() { return SuspensionKinematicsConfig; }
